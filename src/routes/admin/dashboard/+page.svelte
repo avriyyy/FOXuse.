@@ -8,67 +8,27 @@
   let isAuthenticated = false;
   let adminUser = "";
   let activeTab: "ai" | "web3" = "ai";
+  let isLoading = true;
 
-  // Products data
-  let aiProducts = [
-    {
-      id: 1,
-      name: "Smart Assistant Agent",
-      description:
-        "An intelligent AI agent that helps automate daily tasks, manage schedules, and provide smart recommendations.",
-      status: "Coming Soon",
-    },
-    {
-      id: 2,
-      name: "Data Analysis Agent",
-      description:
-        "AI-powered agent for analyzing complex datasets, generating insights, and creating visual reports automatically.",
-      status: "In Development",
-    },
-    {
-      id: 3,
-      name: "Trading Bot Agent",
-      description:
-        "Autonomous trading agent with advanced market analysis, risk management, and automated execution capabilities.",
-      status: "Planning",
-    },
-  ];
+  // Products from database
+  interface Product {
+    id: number;
+    name: string;
+    description: string;
+    status: string;
+    category: string;
+  }
 
-  let web3Products = [
-    {
-      id: 4,
-      name: "NFT Marketplace",
-      description:
-        "A next-generation NFT marketplace with AI-powered curation, smart pricing, and cross-chain support.",
-      status: "Coming Soon",
-    },
-    {
-      id: 5,
-      name: "DeFi Dashboard",
-      description:
-        "Unified dashboard for managing DeFi positions across multiple chains with yield optimization suggestions.",
-      status: "In Development",
-    },
-    {
-      id: 6,
-      name: "Token Launchpad",
-      description:
-        "Secure and compliant token launch platform with built-in vesting, staking, and governance features.",
-      status: "Planning",
-    },
-  ];
+  let aiProducts: Product[] = [];
+  let web3Products: Product[] = [];
 
   $: currentProducts = activeTab === "ai" ? aiProducts : web3Products;
 
   // Modal state
   let showModal = false;
   let isAdding = false;
-  let editingProduct: {
-    id: number;
-    name: string;
-    description: string;
-    status: string;
-  } | null = null;
+  let isSaving = false;
+  let editingProduct: Product | null = null;
 
   // Activity log
   interface Activity {
@@ -90,7 +50,7 @@
         timestamp: new Date(),
       },
       ...activities,
-    ].slice(0, 10); // Keep only last 10
+    ].slice(0, 10);
   }
 
   function formatTime(date: Date) {
@@ -100,20 +60,36 @@
     });
   }
 
+  async function fetchProducts() {
+    try {
+      const [aiRes, web3Res] = await Promise.all([
+        fetch("/api/products?category=ai"),
+        fetch("/api/products?category=web3"),
+      ]);
+      aiProducts = await aiRes.json();
+      web3Products = await web3Res.json();
+    } catch (err) {
+      console.error("Failed to fetch products:", err);
+    } finally {
+      isLoading = false;
+    }
+  }
+
   function openAddModal() {
     isAdding = true;
     editingProduct = {
-      id: Date.now(),
+      id: 0,
       name: "",
       description: "",
       status: "Planning",
+      category: activeTab,
     };
     showModal = true;
   }
 
-  function openEditModal(product: typeof editingProduct) {
+  function openEditModal(product: Product) {
     isAdding = false;
-    editingProduct = { ...product! };
+    editingProduct = { ...product };
     showModal = true;
   }
 
@@ -123,41 +99,77 @@
     isAdding = false;
   }
 
-  function saveProduct() {
+  async function saveProduct() {
     if (!editingProduct) return;
+    isSaving = true;
 
-    if (isAdding) {
-      // Add new product
-      if (activeTab === "ai") {
-        aiProducts = [...aiProducts, editingProduct];
+    try {
+      if (isAdding) {
+        // Create new product
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-session": "authenticated",
+          },
+          body: JSON.stringify({
+            name: editingProduct.name,
+            description: editingProduct.description,
+            status: editingProduct.status,
+            category: activeTab,
+          }),
+        });
+
+        if (res.ok) {
+          addActivity("add", editingProduct.name);
+          await fetchProducts();
+        }
       } else {
-        web3Products = [...web3Products, editingProduct];
+        // Update existing product
+        const res = await fetch(`/api/products/${editingProduct.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-session": "authenticated",
+          },
+          body: JSON.stringify({
+            name: editingProduct.name,
+            description: editingProduct.description,
+            status: editingProduct.status,
+            category: editingProduct.category,
+          }),
+        });
+
+        if (res.ok) {
+          addActivity("edit", editingProduct.name);
+          await fetchProducts();
+        }
       }
-      addActivity("add", editingProduct.name);
-    } else {
-      // Update existing product
-      if (activeTab === "ai") {
-        aiProducts = aiProducts.map((p) =>
-          p.id === editingProduct!.id ? editingProduct! : p
-        );
-      } else {
-        web3Products = web3Products.map((p) =>
-          p.id === editingProduct!.id ? editingProduct! : p
-        );
-      }
-      addActivity("edit", editingProduct.name);
+    } catch (err) {
+      console.error("Failed to save product:", err);
+    } finally {
+      isSaving = false;
+      closeModal();
     }
-    closeModal();
   }
 
-  function deleteProduct(id: number, name: string) {
-    if (confirm("Are you sure you want to delete this product?")) {
-      if (activeTab === "ai") {
-        aiProducts = aiProducts.filter((p) => p.id !== id);
-      } else {
-        web3Products = web3Products.filter((p) => p.id !== id);
+  async function deleteProduct(id: number, name: string) {
+    if (!confirm("Are you sure you want to delete this product?")) return;
+
+    try {
+      const res = await fetch(`/api/products/${id}`, {
+        method: "DELETE",
+        headers: {
+          "x-admin-session": "authenticated",
+        },
+      });
+
+      if (res.ok) {
+        addActivity("delete", name);
+        await fetchProducts();
       }
-      addActivity("delete", name);
+    } catch (err) {
+      console.error("Failed to delete product:", err);
     }
   }
 
@@ -170,6 +182,7 @@
     } else {
       isAuthenticated = true;
       adminUser = user || "Admin";
+      fetchProducts();
     }
   });
 </script>
@@ -221,10 +234,8 @@
             Web3 Products
           </button>
 
-          <!-- Spacer -->
           <div class="flex-1"></div>
 
-          <!-- Add Product Button -->
           <button
             on:click={openAddModal}
             class="px-4 py-2 rounded-lg font-medium text-sm bg-green-500 hover:bg-green-600 text-white transition-all cursor-pointer flex items-center gap-2"
@@ -237,78 +248,92 @@
         <div
           class="bg-brand-card/70 backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden"
         >
-          <table class="w-full">
-            <thead class="bg-white/5">
-              <tr>
-                <th
-                  class="text-left text-xs font-medium text-gray-400 px-4 py-3"
-                  >Name</th
-                >
-                <th
-                  class="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell"
-                  >Description</th
-                >
-                <th
-                  class="text-left text-xs font-medium text-gray-400 px-4 py-3"
-                  >Status</th
-                >
-                <th
-                  class="text-right text-xs font-medium text-gray-400 px-4 py-3"
-                  >Action</th
-                >
-              </tr>
-            </thead>
-            <tbody>
-              {#each currentProducts as product}
-                <tr
-                  class="border-t border-white/5 hover:bg-white/5 transition-colors"
-                >
-                  <td class="px-4 py-3">
-                    <span class="text-sm font-medium text-white"
-                      >{product.name}</span
-                    >
-                  </td>
-                  <td class="px-4 py-3 hidden md:table-cell">
-                    <span class="text-xs text-gray-400 line-clamp-2"
-                      >{product.description}</span
-                    >
-                  </td>
-                  <td class="px-4 py-3">
-                    <span
-                      class="text-xs px-2 py-1 rounded-full
-                      {product.status === 'Coming Soon'
-                        ? 'bg-yellow-500/20 text-yellow-400'
-                        : ''}
-                      {product.status === 'In Development'
-                        ? 'bg-blue-500/20 text-blue-400'
-                        : ''}
-                      {product.status === 'Planning'
-                        ? 'bg-gray-500/20 text-gray-400'
-                        : ''}"
-                    >
-                      {product.status}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3 text-right">
-                    <div class="flex items-center justify-end gap-2">
-                      <button
-                        on:click={() => openEditModal(product)}
-                        class="text-xs px-3 py-1.5 bg-brand-pink/20 text-brand-pink hover:bg-brand-pink hover:text-white rounded-lg transition-colors cursor-pointer"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        on:click={() => deleteProduct(product.id, product.name)}
-                        class="text-xs px-3 py-1.5 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-colors cursor-pointer"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+          {#if isLoading}
+            <div class="text-center py-10">
+              <div class="text-gray-400">Loading products...</div>
+            </div>
+          {:else if currentProducts.length === 0}
+            <div class="text-center py-10">
+              <div class="text-2xl mb-2">📦</div>
+              <div class="text-gray-400">
+                No products yet. Add your first product!
+              </div>
+            </div>
+          {:else}
+            <table class="w-full">
+              <thead class="bg-white/5">
+                <tr>
+                  <th
+                    class="text-left text-xs font-medium text-gray-400 px-4 py-3"
+                    >Name</th
+                  >
+                  <th
+                    class="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell"
+                    >Description</th
+                  >
+                  <th
+                    class="text-left text-xs font-medium text-gray-400 px-4 py-3"
+                    >Status</th
+                  >
+                  <th
+                    class="text-right text-xs font-medium text-gray-400 px-4 py-3"
+                    >Action</th
+                  >
                 </tr>
-              {/each}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {#each currentProducts as product}
+                  <tr
+                    class="border-t border-white/5 hover:bg-white/5 transition-colors"
+                  >
+                    <td class="px-4 py-3">
+                      <span class="text-sm font-medium text-white"
+                        >{product.name}</span
+                      >
+                    </td>
+                    <td class="px-4 py-3 hidden md:table-cell">
+                      <span class="text-xs text-gray-400 line-clamp-2"
+                        >{product.description}</span
+                      >
+                    </td>
+                    <td class="px-4 py-3">
+                      <span
+                        class="text-xs px-2 py-1 rounded-full
+                        {product.status === 'Coming Soon'
+                          ? 'bg-yellow-500/20 text-yellow-400'
+                          : ''}
+                        {product.status === 'In Development'
+                          ? 'bg-blue-500/20 text-blue-400'
+                          : ''}
+                        {product.status === 'Planning'
+                          ? 'bg-gray-500/20 text-gray-400'
+                          : ''}"
+                      >
+                        {product.status}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      <div class="flex items-center justify-end gap-2">
+                        <button
+                          on:click={() => openEditModal(product)}
+                          class="text-xs px-3 py-1.5 bg-brand-pink/20 text-brand-pink hover:bg-brand-pink hover:text-white rounded-lg transition-colors cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          on:click={() =>
+                            deleteProduct(product.id, product.name)}
+                          class="text-xs px-3 py-1.5 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-colors cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
         </div>
 
         <!-- Recent Activity -->
@@ -431,9 +456,10 @@
           </button>
           <button
             on:click={saveProduct}
-            class="flex-1 px-4 py-2 text-sm bg-brand-pink hover:bg-pink-600 text-white font-bold rounded-lg transition-colors cursor-pointer"
+            disabled={isSaving}
+            class="flex-1 px-4 py-2 text-sm bg-brand-pink hover:bg-pink-600 disabled:opacity-50 text-white font-bold rounded-lg transition-colors cursor-pointer"
           >
-            Save
+            {isSaving ? "Saving..." : "Save"}
           </button>
         </div>
       </div>
