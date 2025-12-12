@@ -14,8 +14,9 @@ model Product {
   id          Int      @id @default(autoincrement())
   name        String
   description String
-  status      String   @default("Planning")
+  status      String   @default("Planning") // Planning, In Development, Coming Soon, Deployed
   category    String   // "ai" or "web3"
+  link        String?  // Optional link to the product
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

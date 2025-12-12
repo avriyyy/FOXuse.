@@ -15,7 +15,7 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 
 // POST create new product (admin only)
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request }) => {
   // Check admin session
   const session = request.headers.get('x-admin-session');
   if (session !== 'authenticated') {
@@ -29,7 +29,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
       name: data.name,
       description: data.description,
       status: data.status || 'Planning',
-      category: data.category
+      category: data.category,
+      link: data.link || null
     }
   });
   

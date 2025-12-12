@@ -31,7 +31,8 @@ export const PUT: RequestHandler = async ({ params, request }) => {
         name: data.name,
         description: data.description,
         status: data.status,
-        category: data.category
+        category: data.category,
+        link: data.link || null
       }
     });
     

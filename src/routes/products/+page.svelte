@@ -13,6 +13,7 @@
     description: string;
     status: string;
     category: string;
+    link?: string | null;
   }
 
   let aiProducts: Product[] = [];
@@ -45,6 +46,8 @@
         return "text-yellow-400";
       case "In Development":
         return "text-blue-400";
+      case "Deployed":
+        return "text-green-400";
       default:
         return "text-gray-400";
     }
@@ -219,17 +222,28 @@
               </p>
 
               <div class="mt-5 flex justify-end">
-                <button
-                  class="group/btn relative px-5 py-2.5 rounded-lg font-bold text-sm overflow-hidden transition-all hover:scale-105 cursor-pointer
-                    {activeTab === 'ai'
-                    ? 'bg-brand-pink text-white'
-                    : 'bg-purple-500 text-white'}"
-                >
-                  <div
-                    class="absolute inset-0 w-full h-full bg-white/20 group-hover/btn:translate-x-full transition-transform duration-500 ease-out -translate-x-full"
-                  ></div>
-                  <span class="relative">Visit</span>
-                </button>
+                {#if product.link}
+                  <a
+                    href={product.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="group/btn relative px-5 py-2.5 rounded-lg font-bold text-sm overflow-hidden transition-all hover:scale-105
+                      {activeTab === 'ai'
+                      ? 'bg-brand-pink text-white'
+                      : 'bg-purple-500 text-white'}"
+                  >
+                    <div
+                      class="absolute inset-0 w-full h-full bg-white/20 group-hover/btn:translate-x-full transition-transform duration-500 ease-out -translate-x-full"
+                    ></div>
+                    <span class="relative">Visit</span>
+                  </a>
+                {:else}
+                  <span
+                    class="px-5 py-2.5 rounded-lg font-bold text-sm bg-gray-700/50 text-gray-500 cursor-not-allowed"
+                  >
+                    Coming Soon
+                  </span>
+                {/if}
               </div>
             </div>
           {/each}

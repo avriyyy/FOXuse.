@@ -17,6 +17,7 @@
     description: string;
     status: string;
     category: string;
+    link?: string | null;
   }
 
   let aiProducts: Product[] = [];
@@ -83,13 +84,14 @@
       description: "",
       status: "Planning",
       category: activeTab,
+      link: "",
     };
     showModal = true;
   }
 
   function openEditModal(product: Product) {
     isAdding = false;
-    editingProduct = { ...product };
+    editingProduct = { ...product, link: product.link || "" };
     showModal = true;
   }
 
@@ -117,6 +119,7 @@
             description: editingProduct.description,
             status: editingProduct.status,
             category: activeTab,
+            link: editingProduct.link || null,
           }),
         });
 
@@ -137,6 +140,7 @@
             description: editingProduct.description,
             status: editingProduct.status,
             category: editingProduct.category,
+            link: editingProduct.link || null,
           }),
         });
 
@@ -276,6 +280,10 @@
                     >Status</th
                   >
                   <th
+                    class="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden sm:table-cell"
+                    >Link</th
+                  >
+                  <th
                     class="text-right text-xs font-medium text-gray-400 px-4 py-3"
                     >Action</th
                   >
@@ -307,10 +315,26 @@
                           : ''}
                         {product.status === 'Planning'
                           ? 'bg-gray-500/20 text-gray-400'
+                          : ''}
+                        {product.status === 'Deployed'
+                          ? 'bg-green-500/20 text-green-400'
                           : ''}"
                       >
                         {product.status}
                       </span>
+                    </td>
+                    <td class="px-4 py-3 hidden sm:table-cell">
+                      {#if product.link}
+                        <a
+                          href={product.link}
+                          target="_blank"
+                          class="text-xs text-brand-pink hover:underline truncate max-w-[150px] block"
+                        >
+                          🔗 Visit
+                        </a>
+                      {:else}
+                        <span class="text-xs text-gray-600">-</span>
+                      {/if}
                     </td>
                     <td class="px-4 py-3 text-right">
                       <div class="flex items-center justify-end gap-2">
@@ -443,7 +467,21 @@
               <option value="Planning">Planning</option>
               <option value="In Development">In Development</option>
               <option value="Coming Soon">Coming Soon</option>
+              <option value="Deployed">Deployed</option>
             </select>
+          </div>
+
+          <div>
+            <label for="product-link" class="block text-xs text-gray-400 mb-1"
+              >Link (optional)</label
+            >
+            <input
+              type="url"
+              id="product-link"
+              bind:value={editingProduct.link}
+              placeholder="https://example.com"
+              class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-brand-pink"
+            />
           </div>
         </div>
 
