@@ -53,6 +53,17 @@
   }
   let activities: Activity[] = [];
 
+  // Subscribers
+  let subscriberCount = 0;
+
+  // Notification Modal
+  let showNotifyModal = false;
+  let isSending = false;
+  let notifySubject = "";
+  let notifyMessage = "";
+  let notifyLink = "";
+  let notifyingProduct: Product | null = null;
+
   function showNotification(
     message: string,
     type: "success" | "error" = "success"
@@ -89,6 +100,68 @@
       }
     } catch (err) {
       console.error("Failed to fetch activities:", err);
+    }
+  }
+
+  async function fetchSubscribers() {
+    try {
+      const res = await fetch("/api/admin/subscribers", {
+        headers: { "x-admin-session": "authenticated" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        subscriberCount = data.length;
+      }
+    } catch (err) {
+      console.error("Failed to fetch subscribers:", err);
+    }
+  }
+
+  function openNotifyModal(product: Product) {
+    notifyingProduct = product;
+    notifySubject = `Update: ${product.name} is ${product.status}!`;
+    notifyMessage = `We have exciting news! ${product.name} is now ${product.status}.\n\n${product.description}`;
+    notifyLink = product.link || "";
+    showNotifyModal = true;
+  }
+
+  function closeNotifyModal() {
+    showNotifyModal = false;
+    notifyingProduct = null;
+    isSending = false;
+  }
+
+  async function sendNotification() {
+    if (!notifySubject || !notifyMessage) return;
+
+    isSending = true;
+    try {
+      const res = await fetch("/api/admin/notify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-session": "authenticated",
+        },
+        body: JSON.stringify({
+          subject: notifySubject,
+          message: notifyMessage.replace(/\n/g, "<br>"), // basic formatting
+          link: notifyLink,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        showNotification(`Success: ${data.message}`);
+        closeNotifyModal();
+      } else {
+        showNotification(data.error || "Failed to send", "error");
+      }
+    } catch (err) {
+      console.error("Failed to send notification:", err);
+      showNotification("Error sending notification", "error");
+    } finally {
+      isSending = false;
     }
   }
 
@@ -268,7 +341,11 @@
 
       // Initial load with visual loading state
       const initLoad = async () => {
-        await Promise.all([fetchProducts(), fetchActivities()]);
+        await Promise.all([
+          fetchProducts(),
+          fetchActivities(),
+          fetchSubscribers(),
+        ]);
         // keep loading true for a bit to show animation if it was super fast, optional
       };
 
@@ -301,6 +378,14 @@
       <div class="max-w-6xl mx-auto">
         <div class="flex items-center justify-between mb-6">
           <h1 class="text-xl font-bold text-white">Product Management</h1>
+          <div
+            class="flex items-center gap-2 bg-brand-card/50 px-3 py-1.5 rounded-lg border border-white/10"
+          >
+            <span class="text-xs text-gray-400">Subscribers:</span>
+            <span class="text-sm font-bold text-brand-pink"
+              >{subscriberCount}</span
+            >
+          </div>
         </div>
 
         <!-- Tab Buttons -->
@@ -426,6 +511,13 @@
                     </td>
                     <td class="px-4 py-3 text-right">
                       <div class="flex items-center justify-end gap-2">
+                        <button
+                          on:click={() => openNotifyModal(product)}
+                          class="text-xs px-3 py-1.5 bg-purple-500/20 text-purple-400 hover:bg-purple-500 hover:text-white rounded-lg transition-colors cursor-pointer"
+                          title="Notify Subscribers"
+                        >
+                          🔔
+                        </button>
                         <button
                           on:click={() => openEditModal(product)}
                           class="text-xs px-3 py-1.5 bg-brand-pink/20 text-brand-pink hover:bg-brand-pink hover:text-white rounded-lg transition-colors cursor-pointer"
@@ -636,6 +728,85 @@
               Delete
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Notification Modal -->
+  {#if showNotifyModal}
+    <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        class="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-default"
+        on:click={closeNotifyModal}
+        aria-label="Close modal"
+      ></button>
+      <div
+        class="relative bg-brand-card rounded-xl border border-white/10 w-full max-w-lg p-6 shadow-2xl"
+      >
+        <h2 class="text-lg font-bold text-white mb-1">Notify Subscribers</h2>
+        <p class="text-xs text-gray-400 mb-4">
+          Send an email update to {subscriberCount} subscribers.
+        </p>
+
+        <div class="space-y-4">
+          <div>
+            <label for="notify-subject" class="block text-xs text-gray-400 mb-1"
+              >Subject</label
+            >
+            <input
+              type="text"
+              id="notify-subject"
+              bind:value={notifySubject}
+              class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-brand-pink"
+            />
+          </div>
+
+          <div>
+            <label for="notify-message" class="block text-xs text-gray-400 mb-1"
+              >Message</label
+            >
+            <textarea
+              id="notify-message"
+              bind:value={notifyMessage}
+              rows="6"
+              class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-brand-pink resize-none"
+            ></textarea>
+          </div>
+
+          <div>
+            <label for="notify-link" class="block text-xs text-gray-400 mb-1"
+              >Link Button (Optional)</label
+            >
+            <input
+              type="url"
+              id="notify-link"
+              bind:value={notifyLink}
+              placeholder="https://..."
+              class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-brand-pink"
+            />
+          </div>
+        </div>
+
+        <div class="flex gap-3 mt-6">
+          <button
+            on:click={closeNotifyModal}
+            class="flex-1 px-4 py-2 text-sm text-gray-400 hover:text-white border border-white/10 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            on:click={sendNotification}
+            disabled={isSending}
+            class="flex-1 px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-lg transition-colors flex justify-center gap-2"
+          >
+            {#if isSending}
+              Sending...
+            {:else}
+              🚀 Send to {subscriberCount}
+            {/if}
+          </button>
         </div>
       </div>
     </div>

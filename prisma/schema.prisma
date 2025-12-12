@@ -29,3 +29,9 @@ model Activity {
   adminUser   String   // Who performed the action
   createdAt   DateTime @default(now())
 }
+
+model Subscriber {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
