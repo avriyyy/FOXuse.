@@ -4,6 +4,7 @@
   import ZodiacBackground from "$lib/components/ZodiacBackground.svelte";
   import Navbar from "$lib/components/Navbar.svelte";
   import Footer from "$lib/components/Footer.svelte";
+  import Loading from "$lib/components/Loading.svelte";
 
   let isAuthenticated = false;
   let adminUser = "";
@@ -31,6 +32,16 @@
   let isSaving = false;
   let editingProduct: Product | null = null;
 
+  // Confirmation Modal
+  let showConfirmModal = false;
+  let confirmMessage = "";
+  let confirmCallback: (() => void) | null = null;
+
+  // Alert State
+  let showAlert = false;
+  let alertMessage = "";
+  let alertType: "success" | "error" = "success";
+
   // Activity log from database
   interface Activity {
     id: number;
@@ -41,6 +52,34 @@
     createdAt: string;
   }
   let activities: Activity[] = [];
+
+  function showNotification(
+    message: string,
+    type: "success" | "error" = "success"
+  ) {
+    alertMessage = message;
+    alertType = type;
+    showAlert = true;
+    setTimeout(() => {
+      showAlert = false;
+    }, 3000);
+  }
+
+  function showConfirmation(message: string, callback: () => void) {
+    confirmMessage = message;
+    confirmCallback = callback;
+    showConfirmModal = true;
+  }
+
+  function closeConfirmation() {
+    showConfirmModal = false;
+    confirmCallback = null;
+  }
+
+  function confirmAction() {
+    if (confirmCallback) confirmCallback();
+    closeConfirmation();
+  }
 
   async function fetchActivities() {
     try {
@@ -92,7 +131,9 @@
       web3Products = await web3Res.json();
     } catch (err) {
       console.error("Failed to fetch products:", err);
+      showNotification("Failed to load products", "error");
     } finally {
+      // Small delay to prevent flickering if loading is too fast, and matches main site feel
       isLoading = false;
     }
   }
@@ -124,6 +165,12 @@
 
   async function saveProduct() {
     if (!editingProduct) return;
+
+    // Fix link format
+    if (editingProduct.link && !editingProduct.link.match(/^https?:\/\//)) {
+      editingProduct.link = `https://${editingProduct.link}`;
+    }
+
     isSaving = true;
 
     try {
@@ -147,6 +194,9 @@
         if (res.ok) {
           addActivity("add", editingProduct.name);
           await fetchProducts();
+          showNotification("Product added successfully!");
+        } else {
+          showNotification("Failed to add product", "error");
         }
       } else {
         // Update existing product
@@ -168,34 +218,42 @@
         if (res.ok) {
           addActivity("edit", editingProduct.name);
           await fetchProducts();
+          showNotification("Product updated successfully!");
+        } else {
+          showNotification("Failed to update product", "error");
         }
       }
     } catch (err) {
       console.error("Failed to save product:", err);
+      showNotification("An error occurred while saving", "error");
     } finally {
       isSaving = false;
       closeModal();
     }
   }
 
-  async function deleteProduct(id: number, name: string) {
-    if (!confirm("Are you sure you want to delete this product?")) return;
+  function deleteProduct(id: number, name: string) {
+    showConfirmation(`Are you sure you want to delete "${name}"?`, async () => {
+      try {
+        const res = await fetch(`/api/products/${id}`, {
+          method: "DELETE",
+          headers: {
+            "x-admin-session": "authenticated",
+          },
+        });
 
-    try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: "DELETE",
-        headers: {
-          "x-admin-session": "authenticated",
-        },
-      });
-
-      if (res.ok) {
-        addActivity("delete", name);
-        await fetchProducts();
+        if (res.ok) {
+          addActivity("delete", name);
+          await fetchProducts();
+          showNotification("Product deleted successfully!");
+        } else {
+          showNotification("Failed to delete product", "error");
+        }
+      } catch (err) {
+        console.error("Failed to delete product:", err);
+        showNotification("An error occurred while deleting", "error");
       }
-    } catch (err) {
-      console.error("Failed to delete product:", err);
-    }
+    });
   }
 
   onMount(() => {
@@ -207,8 +265,14 @@
     } else {
       isAuthenticated = true;
       adminUser = user || "Admin";
-      fetchProducts();
-      fetchActivities();
+
+      // Initial load with visual loading state
+      const initLoad = async () => {
+        await Promise.all([fetchProducts(), fetchActivities()]);
+        // keep loading true for a bit to show animation if it was super fast, optional
+      };
+
+      initLoad();
     }
   });
 </script>
@@ -275,8 +339,10 @@
           class="bg-brand-card/70 backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden"
         >
           {#if isLoading}
-            <div class="text-center py-10">
-              <div class="text-gray-400">Loading products...</div>
+            <div class="py-20 flex justify-center">
+              <div
+                class="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-pink"
+              ></div>
             </div>
           {:else if currentProducts.length === 0}
             <div class="text-center py-10">
@@ -525,8 +591,72 @@
       </div>
     </div>
   {/if}
+
+  <!-- Custom Confirmation Modal -->
+  {#if showConfirmModal}
+    <div class="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <div
+        class="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        on:click={closeConfirmation}
+      ></div>
+      <div
+        class="relative bg-brand-card rounded-xl border border-white/10 w-full max-w-sm p-6 shadow-2xl"
+      >
+        <div class="text-center">
+          <div
+            class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-900/40 mb-4"
+          >
+            <svg
+              class="h-6 w-6 text-red-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Confirm Action</h3>
+          <p class="text-sm text-gray-400 mb-6">{confirmMessage}</p>
+          <div class="flex gap-3">
+            <button
+              on:click={closeConfirmation}
+              class="flex-1 px-4 py-2 text-sm text-gray-400 hover:text-white border border-white/10 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              on:click={confirmAction}
+              class="flex-1 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Toast/Alert -->
+  {#if showAlert}
+    <div class="fixed bottom-6 right-6 z-[120] animate-bounce-in">
+      <div
+        class="px-6 py-3 rounded-lg shadow-xl border flex items-center gap-3
+        {alertType === 'success'
+          ? 'bg-green-900/90 border-green-700 text-green-100'
+          : 'bg-red-900/90 border-red-700 text-red-100'}"
+      >
+        <span class="text-xl">
+          {alertType === "success" ? "✅" : "❌"}
+        </span>
+        <span class="font-medium text-sm">{alertMessage}</span>
+      </div>
+    </div>
+  {/if}
 {:else}
-  <div class="fixed inset-0 bg-brand-dark flex items-center justify-center">
-    <div class="text-white text-sm">Loading...</div>
-  </div>
+  <Loading />
 {/if}
