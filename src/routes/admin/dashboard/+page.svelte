@@ -31,30 +31,51 @@
   let isSaving = false;
   let editingProduct: Product | null = null;
 
-  // Activity log
+  // Activity log from database
   interface Activity {
     id: number;
-    action: "add" | "edit" | "delete";
+    action: string;
     productName: string;
     category: string;
-    timestamp: Date;
+    adminUser: string;
+    createdAt: string;
   }
   let activities: Activity[] = [];
 
-  function addActivity(action: Activity["action"], productName: string) {
-    activities = [
-      {
-        id: Date.now(),
-        action,
-        productName,
-        category: activeTab === "ai" ? "AI Agent" : "Web3",
-        timestamp: new Date(),
-      },
-      ...activities,
-    ].slice(0, 10);
+  async function fetchActivities() {
+    try {
+      const res = await fetch("/api/activities");
+      if (res.ok) {
+        activities = await res.json();
+      }
+    } catch (err) {
+      console.error("Failed to fetch activities:", err);
+    }
   }
 
-  function formatTime(date: Date) {
+  async function addActivity(action: string, productName: string) {
+    try {
+      await fetch("/api/activities", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-session": "authenticated",
+        },
+        body: JSON.stringify({
+          action,
+          productName,
+          category: activeTab === "ai" ? "AI Agent" : "Web3",
+          adminUser,
+        }),
+      });
+      await fetchActivities();
+    } catch (err) {
+      console.error("Failed to save activity:", err);
+    }
+  }
+
+  function formatTime(dateStr: string) {
+    const date = new Date(dateStr);
     return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
@@ -187,6 +208,7 @@
       isAuthenticated = true;
       adminUser = user || "Admin";
       fetchProducts();
+      fetchActivities();
     }
   });
 </script>
@@ -400,7 +422,7 @@
                     </div>
                   </div>
                   <span class="text-xs text-gray-500"
-                    >{formatTime(activity.timestamp)}</span
+                    >{formatTime(activity.createdAt)}</span
                   >
                 </div>
               {/each}
